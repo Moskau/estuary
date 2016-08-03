@@ -16,7 +16,7 @@
 > data Simple = One | Two | Three deriving (Show)
 > type Multiple = [Simple]
 > data SimpleWidgetRequest = Set Simple | Flash
-> data SimpleWidgetEvent k = Drop k | DragEnd k | DeleteMe k deriving (Show)
+> data SimpleWidgetEvent k = Drop k | DragEnd k | DeleteMe k | Idle k deriving (Show)
 
 > data Misc = Add deriving (Show)
 > type Hetero = Either Simple Misc
@@ -82,47 +82,30 @@
 
 > dragAndDropWidget :: MonadWidget t m => m (Dynamic t [Maybe Simple])
 > dragAndDropWidget = el "div" $ mdo
-
 >   let initialMap = empty :: Map Int Hetero
->   disableButton <- liftM (Right Disable <$) $ button "Disable '+' buttons"
 >   let parentEvent = attachWith (\a b -> fromList (zip a (repeat b))) (current activeKeys) disableButton
-
 >   makeSimpleWidget <- liftM (fmap (=:(Just(Left One))) . (tagDyn maxKey)) $ button "Add SimpleWidget"
 >   makeMiscWidget <- liftM (fmap (=:(Just(Right Add))) . (tagDyn maxKey)) $ button "Add MiscWidget"
 >   let growEvents = mergeWith makeMap [makeMiscWidget, makeSimpleWidget]
->   let updateEvents = mergeWith union [growEvents, widgetEvents', dropEvents']
-
->   widgets <- liftM (joinDynThroughMap) $ listWithChildEvents initialMap updateEvents parentEvent builder --MonadWidget t m => m (Dynamic t( Map k (Maybe Simple,Event t(SimpleWidgetEvent k))))
+>   widgets <- liftM (joinDynThroughMap) $ listWithChildEvents initialMap updateEvents never builder --MonadWidget t m => m (Dynamic t( Map k (Maybe Simple,Event t(SimpleWidgetEvent k))))
 >   let widgets' = attach (current widgets) (updated widgets)
 >   widgets'' <- holdDyn (Data.Map.empty,Data.Map.empty) widgets'
 >   (old, new) <- splitDyn widgets''
 >   (values, events) <- forDyn old (unzip . elems) >>= splitDyn
 >   (values', events') <- forDyn new (unzip . elems) >>= splitDyn
->   newValues <- combineDyn zip events' values  -- Dynamic t [(Event t (SimpleWidgetEvent k), Maybe Simple)]
->   bothEvents <- combineDyn zip events events' -- Dynamic t [(Event t (SimpleWidgetEvent k), (Event t (SimpleWidgetEvent k))]
 
->   widgetEvents <- forDyn newValues (fmap eventBuff)
->   dropEvents <- forDyn bothEvents (fmap(fmap dropCheck))
->   let widgetEvents' = switch $ fmap (mergeWith (union)) $ current widgetEvents
->   let dropEvents' = switch $ fmap (mergeWith (union)) $ current dropEvents
-
-newValues - forDyn into dynamic -> [(Event t (SimpleWidgetEvent k), Maybe Simple)]
-          - fmap over list      -> (Event t (SimpleWidgetEvent k), Maybe Simple)
-          Have to get to type (SimpleWidgetEvent k, Maybe Simple)
-          - ???
-
-Solution: zipListWithEvent
-
-bothEvents - forDyn into Dynamic -> [(Event t (SimpleWidgetEvent k), Event t (SimpleWidgetEvent k))]
-           - fmap over list      -> (Event t (SimpleWidgetEvent k), Event t (SimpleWidgetEvent k))
-           - mapTuple fmap
-
-Solution: appendEvents
-
-(Event t (SimpleWidgetEvent Int), Event t (SimpleWidgetEvent Int)) -> Event t (Map Int (Maybe Hetero))
-(Event t (SimpleWidgetEvent Int), Maybe Simple) -> Event t (Map Int (Maybe Hetero))
-
-combineEvents :: (a -> b -> c) -> (Event a, Event b) -> Event c
+>   dragList <- forDyn events (fmap (ffilter checkDrag)) -- Dynamic t [Event t (SimpleWidgetEvent k)]
+>   let dragEvent = switch $ fmap (leftmost) $ current dragList -- Event t (SimpleWidgetEvent k) (DragEnd Events)
+>   dropList <- forDyn events' (fmap (ffilter checkDrop)) -- Dynamic t [Event t (SimpleWidgetEvent k)]
+>   let dropEvent = switch $ fmap (leftmost) $ current dropList -- Event t (SimpleWidget Event k) (Drop Events)
+>   dragEvent' <- holdDyn (Idle 1) dragEvent
+>   let dragDropEvent = attachDyn dragEvent' dropEvent
+>   value <- combineDyn getValue dragEvent' new
+>   value' <- forDyn value (fst)
+>   let dragDropEvent' = attachDyn value' dragDropEvent
+>   let deleteEvent = (fmap deleteValue) dragDropEvent
+>   let dragDropEvent'' = (fmap addValue) dragDropEvent'
+>   let updateEvents = mergeWith union [deleteEvent, dragDropEvent'', growEvents]
 
 >   activeKeys <- forDyn widgets keys
 >   maxKey <- forDyn activeKeys (\k-> if k==[] then 0 else (maximum k)+1)
@@ -131,9 +114,11 @@ combineEvents :: (a -> b -> c) -> (Event a, Event b) -> Event c
 >     display activeKeys
 >     el "div" $ return values'
 >   where
->     eventBuff DeleteMe k' = k'=: Nothing
->     eventBuff Main.Drop k' =
->     dropCheck (DragEnd k, Main.Drop k') = k=: Nothing
+>     checkDrag (DragEnd k) = True
+>     checkDrop (Main.Drop k) = True
+>     getValue (DragEnd k) newMap = findWithDefault (Nothing,never) k newMap
+>     deleteValue (DragEnd k, Main.Drop k') = k =: Nothing
+>     addValue (v,(DragEnd k, Main.Drop k')) = k =: v
 
 makeMap should assign unique keys to two widgets when they're made at the same time, giving parameter 'a' the lower key
 
