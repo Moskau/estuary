@@ -39,11 +39,11 @@
 > miscWidget :: MonadWidget t m => m (Dynamic t (Misc, Event t WidgetEvent))
 > miscWidget = do
 >   (wid,deleteButton) <- elAttr' "div" attr $ do
->     liftM (DeleteMe key <$) $ button "-"
+>     liftM (DeleteMe <$ button "-")
 >   x <- Reflex.Dom.wrapDomEvent (Reflex.Dom._el_element wid) (Reflex.Dom.onEventName Reflex.Dom.Drop)     (void $ GHCJS.preventDefault)
 >   y <- Reflex.Dom.wrapDomEvent (Reflex.Dom._el_element wid) (Reflex.Dom.onEventName Reflex.Dom.Dragover) (void $ GHCJS.preventDefault)
 >   _ <- performEvent_ $ return () <$ y
->   let miscEvents = leftmost [(Main.Drop key <$) $ x, deleteButton]
+>   let miscEvents = leftmost [Main.Drop <$ x, deleteButton]
 >   return $ constDyn (Add,miscEvents)
 >   where
 >         attr = singleton "style" "background-color: red; border: 3px solid black"
@@ -88,10 +88,10 @@ valuesOld'' :: Map k Either Simple Misc
 >   let valuesOld'' =
 valuesOld''' :: Behavior t (Map k Either Simple Misc)
 >   let valuesOld''' = pull (liftM valuesOld'')
------------------------------------------------------
-
 valuesList :: Behavior t [Either Simple Misc]
 >   let valuesOld'''' = fmap (elems) valuesOld'''
+-----------------------------------------------------
+
 insertList :: Event t [(k,Contruction Either Simple Misc)]
 >   let insertList = attachWith (fmap(\v k -> [ (k,Insert (Right Add)),(k+1,Insert(Left v))])) valuesOld'''' dropKeys
 insertMap :: Event t (Map k (Construction Either Simple Misc))
