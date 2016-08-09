@@ -1,6 +1,6 @@
 {-# LANGUAGE RecursiveDo #-}
 
-module Estuary.Reflex.Container where
+module Container where
 
 import Data.Map
 import Reflex
